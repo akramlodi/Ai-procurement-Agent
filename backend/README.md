@@ -2,11 +2,20 @@
 
 This backend folder contains the initial Python API foundation for Phase 2.
 
+## Create or activate the virtual environment
+
+From the project root:
+
+```bash
+cd "/Users/mohammedakram/Desktop/wbg intern/procurement_agent"
+source .venv/bin/activate
+```
+
 ## Install dependencies
 
 ```bash
 cd backend
-python3 -m pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 ## Run the API
