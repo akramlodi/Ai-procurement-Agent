@@ -1,36 +1,47 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Procurement Agent
 
-## Getting Started
+A Next.js-based procurement intelligence MVP focused on helping a procurement officer manage procurement workspaces, upload documents, and prepare for AI-assisted supplier evaluation.
 
-First, run the development server:
+## Implemented so far
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+### Phase 1 — Procurement Workspace Dashboard
+Completed:
+- A shadcn-based procurement dashboard UI
+- Create new procurement workspace flow
+- Select and switch between existing workspaces
+- Upload multiple procurement documents into the active workspace
+- Display uploaded documents with metadata
+- Local persistence of workspaces and uploaded documents in the browser
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Current stack
+- Next.js 16
+- React 19
+- TypeScript
+- Tailwind CSS
+- shadcn/ui
+- lucide-react
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Getting started
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Install dependencies
+   ```bash
+   npm install
+   ```
 
-## Learn More
+2. Run the development server
+   ```bash
+   npm run dev
+   ```
 
-To learn more about Next.js, take a look at the following resources:
+3. Open the app in your browser
+   - Dashboard: http://localhost:3000/dashboard
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Project structure
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- app/ - app router pages
+- components/ - reusable UI components
+- public/ - static assets
 
-## Deploy on Vercel
+## Notes
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This MVP currently focuses on the first phase of the procurement workflow: workspace creation and document intake. Future phases can expand into AI analysis, supplier comparison, and report generation.
