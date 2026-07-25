@@ -8,7 +8,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+import { toast } from "sonner"
 import { CheckCircle2, FileText, FolderKanban, PlusCircle, Sparkles, Upload } from "lucide-react"
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
 type ProcurementDocument = {
   id: string
@@ -27,61 +30,40 @@ type ProcurementWorkspace = {
   documents: ProcurementDocument[]
 }
 
-const storageKey = "procurement-workspaces-v1"
-
-const initialWorkspaces: ProcurementWorkspace[] = [
-  {
-    id: "workspace-laptop",
-    name: "Laptop Procurement",
-    description: "Evaluation for 120 business laptops and accessories.",
-    status: "Evaluation",
-    createdAt: "Today",
-    documents: [
-      { id: "doc-1", name: "purchase-request.pdf", size: "1.2 MB", type: "Purchase Request", uploadedAt: "Today" },
-      { id: "doc-2", name: "supplier-quotation.xlsx", size: "420 KB", type: "Quotation", uploadedAt: "Today" },
-    ],
-  },
-  {
-    id: "workspace-furniture",
-    name: "Office Furniture Procurement",
-    description: "Review of ergonomic chairs and meeting room furniture.",
-    status: "Draft",
-    createdAt: "Yesterday",
-    documents: [{ id: "doc-3", name: "specifications.docx", size: "780 KB", type: "Technical Spec", uploadedAt: "Yesterday" }],
-  },
-]
-
 export function ProcurementDashboard() {
-  const [workspaces, setWorkspaces] = useState<ProcurementWorkspace[]>(initialWorkspaces)
-  const [activeWorkspaceId, setActiveWorkspaceId] = useState(initialWorkspaces[0]?.id ?? "")
+  const [workspaces, setWorkspaces] = useState<ProcurementWorkspace[]>([])
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState("")
   const [workspaceName, setWorkspaceName] = useState("")
   const [workspaceDescription, setWorkspaceDescription] = useState("")
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
 
   useEffect(() => {
-    if (typeof window === "undefined") return
-
-    const stored = window.localStorage.getItem(storageKey)
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored) as ProcurementWorkspace[]
-        if (parsed.length) {
-          setWorkspaces(parsed)
-          setActiveWorkspaceId(parsed[0].id)
-        }
-      } catch {
-        window.localStorage.removeItem(storageKey)
-      }
-    }
-
-    setIsLoaded(true)
+    fetchWorkspaces()
   }, [])
 
-  useEffect(() => {
-    if (!isLoaded || typeof window === "undefined") return
-    window.localStorage.setItem(storageKey, JSON.stringify(workspaces))
-  }, [workspaces, isLoaded])
+  async function fetchWorkspaces() {
+    try {
+      const res = await fetch(`${API_BASE}/api/workspaces`)
+      if (!res.ok) throw new Error("Failed to fetch workspaces")
+      const data = await res.json()
+      const mapped: ProcurementWorkspace[] = data.map((row: Record<string, string>) => ({
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        status: row.status,
+        createdAt: row.created_at,
+        documents: [],
+      }))
+      setWorkspaces(mapped)
+      if (mapped.length) setActiveWorkspaceId(mapped[0].id)
+    } catch {
+      toast.error("Could not load workspaces from server")
+    } finally {
+      setIsLoaded(true)
+    }
+  }
 
   useEffect(() => {
     if (!activeWorkspaceId && workspaces.length) {
@@ -105,25 +87,46 @@ export function ProcurementDashboard() {
     }
   }, [workspaces])
 
-  const createWorkspace = (event: FormEvent<HTMLFormElement>) => {
+  const createWorkspace = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
     const name = workspaceName.trim()
     if (!name) return
 
-    const createdWorkspace: ProcurementWorkspace = {
-      id: `workspace-${Date.now()}`,
-      name,
-      description: workspaceDescription.trim() || "New procurement workspace for document review and supplier evaluation.",
-      status: "Evaluation",
-      createdAt: "Just now",
-      documents: [],
-    }
+    setIsCreating(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/workspaces`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          description: workspaceDescription.trim() || "New procurement workspace for document review and supplier evaluation.",
+          status: "Draft",
+        }),
+      })
 
-    setWorkspaces((current) => [createdWorkspace, ...current])
-    setActiveWorkspaceId(createdWorkspace.id)
-    setWorkspaceName("")
-    setWorkspaceDescription("")
+      if (!res.ok) throw new Error("Failed to create workspace")
+
+      const row = await res.json()
+      const createdWorkspace: ProcurementWorkspace = {
+        id: row.id,
+        name: row.name,
+        description: row.description,
+        status: row.status,
+        createdAt: row.created_at,
+        documents: [],
+      }
+
+      setWorkspaces((current) => [createdWorkspace, ...current])
+      setActiveWorkspaceId(createdWorkspace.id)
+      setWorkspaceName("")
+      setWorkspaceDescription("")
+      toast.success("Workspace created")
+    } catch {
+      toast.error("Failed to create workspace. Is the backend running?")
+    } finally {
+      setIsCreating(false)
+    }
   }
 
   const uploadDocuments = (event: FormEvent<HTMLFormElement>) => {
@@ -213,8 +216,8 @@ export function ProcurementDashboard() {
                     onChange={(event) => setWorkspaceDescription(event.target.value)}
                   />
                 </div>
-                <Button type="submit" className="w-full">
-                  Create workspace
+                <Button type="submit" className="w-full" disabled={isCreating || !workspaceName.trim()}>
+                  {isCreating ? "Creating..." : "Create workspace"}
                 </Button>
               </form>
             </CardContent>

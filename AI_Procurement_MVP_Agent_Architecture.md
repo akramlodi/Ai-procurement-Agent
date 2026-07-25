@@ -460,3 +460,185 @@ grounded, explainable response.
 -   Email ingestion
 -   Agent memory
 -   Fine-tuned procurement models
+
+
+## Database Design
+
+The application uses **Supabase PostgreSQL** as the primary database and **Supabase Storage** for storing uploaded procurement documents.
+
+The schema is intentionally simple for the MVP while supporting the planner-first AI architecture.
+
+## Tables
+
+### `procurements`
+
+Represents a procurement workspace. Every procurement case (e.g., "Laptop Procurement") has one record.
+
+Stores:
+
+- Procurement name
+- Description
+- Status
+- Creation timestamp
+
+---
+
+### `documents`
+
+Stores metadata about every uploaded document.
+
+Examples:
+
+- Purchase Request
+- Technical Specification
+- Supplier Quotation
+- Draft Contract
+
+Stores:
+
+- Filename
+- Document type
+- Storage path (Supabase Storage)
+- AI-generated summary
+- Upload timestamp
+
+The actual document is stored in **Supabase Storage**.
+
+---
+
+### `suppliers`
+
+Stores structured information extracted from supplier quotations.
+
+Examples of extracted fields:
+
+- Supplier name
+- Price
+- Currency
+- Warranty
+- Delivery time
+- Payment terms
+- Compliance score
+
+Additionally, each supplier contains a `raw_extraction` JSONB field which stores category-specific information extracted by the AI.
+
+Example:
+
+```json
+{
+  "processor": "Intel Core i7",
+  "ram": "16 GB",
+  "storage": "512 GB SSD",
+  "display": "14-inch",
+  "battery": "10 hours"
+}
+```
+
+This allows the application to support different procurement categories without changing the database schema.
+
+---
+
+### `document_chunks`
+
+Stores the text chunks generated from uploaded procurement documents.
+
+Each chunk contains:
+
+- Chunk text
+- Embedding vector (pgvector)
+- Metadata
+- Document reference
+
+These chunks are used by the Retrieval Agent during semantic search (RAG).
+
+---
+
+### `reports`
+
+Stores AI-generated procurement reports.
+
+Examples:
+
+- Supplier Comparison Report
+- Procurement Summary
+- Contract Analysis Report
+- Risk Assessment Report
+
+---
+
+# Document Processing Pipeline
+
+Whenever Sarah uploads a procurement document (for example `Dell_Quotation.pdf`), the application automatically performs the following workflow.
+
+## Step 1 — Upload Document
+
+The uploaded document is stored in **Supabase Storage**.
+
+↓
+
+## Step 2 — Register Document
+
+A new record is created in the `documents` table containing metadata about the uploaded file.
+
+↓
+
+## Step 3 — AI Document Processing
+
+The AI processing pipeline automatically:
+
+- Extracts text
+- Identifies document type
+- Extracts supplier information
+- Extracts prices
+- Extracts delivery timelines
+- Extracts warranty information
+- Extracts payment terms
+- Generates an AI summary
+
+↓
+
+## Step 4 — Store Structured Data
+
+The extracted procurement information is inserted into the `suppliers` table.
+
+This allows the application to answer structured procurement questions without reading the PDF every time.
+
+↓
+
+## Step 5 — Create Chunks
+
+The document is split into semantic chunks suitable for Retrieval-Augmented Generation (RAG).
+
+↓
+
+## Step 6 — Generate Embeddings
+
+Each chunk is converted into an embedding vector using the configured embedding model.
+
+↓
+
+## Step 7 — Store Vector Data
+
+The chunks and embeddings are stored in the `document_chunks` table.
+
+The document is now searchable using semantic retrieval.
+
+---
+
+# Result
+
+After processing completes:
+
+✅ Original document stored in Supabase Storage
+
+✅ Document metadata stored in `documents`
+
+✅ Structured procurement information stored in `suppliers`
+
+✅ Semantic chunks stored in `document_chunks`
+
+The Planner Agent can now route future user questions to either:
+
+- **SQL Agent** → for structured procurement data
+- **Retrieval Agent** → for document understanding
+- **Both** → when a question requires structured data and document context
