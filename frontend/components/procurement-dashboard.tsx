@@ -1,7 +1,7 @@
 "use client"
 
 import type { FormEvent } from "react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,16 +9,17 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { toast } from "sonner"
-import { CheckCircle2, FileText, FolderKanban, PlusCircle, Sparkles, Upload } from "lucide-react"
+import { CheckCircle2, FileText, FolderKanban, Loader2, PlusCircle, Sparkles, Upload, XCircle } from "lucide-react"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"
 
 type ProcurementDocument = {
   id: string
-  name: string
-  size: string
-  type: string
-  uploadedAt: string
+  filename: string
+  document_type: string
+  document_status: string
+  ai_summary: string | null
+  uploaded_at: string
 }
 
 type ProcurementWorkspace = {
@@ -38,6 +39,8 @@ export function ProcurementDashboard() {
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null)
   const [isLoaded, setIsLoaded] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     fetchWorkspaces()
@@ -64,6 +67,54 @@ export function ProcurementDashboard() {
       setIsLoaded(true)
     }
   }
+
+  async function fetchDocuments(workspaceId: string) {
+    try {
+      const res = await fetch(`${API_BASE}/api/workspaces/${workspaceId}/documents`)
+      if (!res.ok) return
+      const docs = await res.json()
+      setWorkspaces((current) =>
+        current.map((ws) =>
+          ws.id === workspaceId
+            ? { ...ws, documents: docs.map((d: Record<string, string>) => ({
+                id: d.id,
+                filename: d.filename,
+                document_type: d.document_type,
+                document_status: d.document_status,
+                ai_summary: d.ai_summary,
+                uploaded_at: d.uploaded_at,
+              }))}
+            : ws,
+        ),
+      )
+    } catch {
+      // silent — will retry on next poll
+    }
+  }
+
+  useEffect(() => {
+    if (!activeWorkspaceId) return
+    fetchDocuments(activeWorkspaceId)
+  }, [activeWorkspaceId])
+
+  useEffect(() => {
+    if (pollRef.current) clearInterval(pollRef.current)
+    if (!activeWorkspaceId) return
+
+    const hasProcessing = workspaces
+      .find((ws) => ws.id === activeWorkspaceId)
+      ?.documents.some((d) => d.document_status === "processing")
+
+    if (hasProcessing) {
+      pollRef.current = setInterval(() => {
+        fetchDocuments(activeWorkspaceId)
+      }, 3000)
+    }
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
+    }
+  }, [activeWorkspaceId, workspaces])
 
   useEffect(() => {
     if (!activeWorkspaceId && workspaces.length) {
@@ -129,35 +180,57 @@ export function ProcurementDashboard() {
     }
   }
 
-  const uploadDocuments = (event: FormEvent<HTMLFormElement>) => {
+  const uploadDocuments = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
     if (!activeWorkspace || !selectedFiles?.length) return
 
-    const documents = Array.from(selectedFiles).map((file, index) => ({
-      id: `${activeWorkspace.id}-${Date.now()}-${index}`,
-      name: file.name,
-      size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-      type: file.type ? file.name.split(".").pop()?.toUpperCase() ?? "FILE" : "FILE",
-      uploadedAt: "Just now",
-    }))
+    const formData = new FormData()
+    Array.from(selectedFiles).forEach((file) => formData.append("files", file))
 
-    setWorkspaces((current) =>
-      current.map((workspace) =>
-        workspace.id === activeWorkspace.id
-          ? {
-              ...workspace,
-              documents: [...workspace.documents, ...documents],
-            }
-          : workspace,
-      ),
-    )
+    setIsUploading(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/workspaces/${activeWorkspace.id}/documents`, {
+        method: "POST",
+        body: formData,
+      })
 
-    setSelectedFiles(null)
-    const input = document.getElementById("document-upload") as HTMLInputElement | null
-    if (input) {
-      input.value = ""
+      if (!res.ok) throw new Error("Upload failed")
+
+      const created = await res.json()
+      const newDocs: ProcurementDocument[] = created.map((d: Record<string, string>) => ({
+        id: d.id,
+        filename: d.filename,
+        document_type: d.document_type,
+        document_status: d.document_status,
+        ai_summary: d.ai_summary,
+        uploaded_at: d.uploaded_at,
+      }))
+
+      setWorkspaces((current) =>
+        current.map((ws) =>
+          ws.id === activeWorkspace.id
+            ? { ...ws, documents: [...newDocs, ...ws.documents] }
+            : ws,
+        ),
+      )
+
+      toast.success(`${newDocs.length} document(s) uploaded, processing started`)
+    } catch {
+      toast.error("Failed to upload documents. Is the backend running?")
+    } finally {
+      setIsUploading(false)
+      setSelectedFiles(null)
+      const input = document.getElementById("document-upload") as HTMLInputElement | null
+      if (input) input.value = ""
     }
+  }
+
+  function statusBadge(status: string) {
+    if (status === "completed") return <Badge variant="secondary" className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">Completed</Badge>
+    if (status === "processing") return <Badge variant="secondary" className="bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300"><Loader2 className="mr-1 h-3 w-3 animate-spin" />Processing</Badge>
+    if (status === "failed") return <Badge variant="secondary" className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"><XCircle className="mr-1 h-3 w-3" />Failed</Badge>
+    return <Badge variant="outline">{status}</Badge>
   }
 
   return (
@@ -280,7 +353,7 @@ export function ProcurementDashboard() {
                       id="document-upload"
                       type="file"
                       multiple
-                      accept=".pdf,.doc,.docx,.xlsx,.csv"
+                      accept=".pdf,.docx"
                       onChange={(event) => setSelectedFiles(event.target.files)}
                     />
                   </div>
@@ -288,8 +361,12 @@ export function ProcurementDashboard() {
                     <span className="text-muted-foreground">
                       {activeWorkspace ? `Active workspace: ${activeWorkspace.name}` : "Create a workspace to begin"}
                     </span>
-                    <Button type="submit" disabled={!activeWorkspace || !selectedFiles?.length}>
-                      Add to workspace
+                    <Button type="submit" disabled={isUploading || !activeWorkspace || !selectedFiles?.length}>
+                      {isUploading ? (
+                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Uploading...</>
+                      ) : (
+                        "Add to workspace"
+                      )}
                     </Button>
                   </div>
                 </form>
@@ -309,13 +386,12 @@ export function ProcurementDashboard() {
                         <div className="flex items-center gap-2">
                           <FileText className="h-4 w-4 text-primary" />
                           <div>
-                            <p className="text-sm font-medium">{document.name}</p>
-                            <p className="text-xs text-muted-foreground">{document.type} • {document.size}</p>
+                            <p className="text-sm font-medium">{document.filename}</p>
+                            <p className="text-xs text-muted-foreground">{document.document_type}</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                          {document.uploadedAt}
+                        <div className="flex items-center gap-2">
+                          {statusBadge(document.document_status)}
                         </div>
                       </div>
                     ))}

@@ -8,18 +8,17 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from supabase import create_client
 
+from app.routers.documents import router as documents_router
+
 load_dotenv()
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/rest/v1").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
-supabase = None
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global supabase
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    app.state.supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
     yield
 
 
@@ -32,6 +31,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(documents_router)
 
 
 class WorkspaceCreate(BaseModel):
@@ -62,7 +63,7 @@ def health_check() -> JSONResponse:
 def create_workspace(payload: WorkspaceCreate):
     try:
         result = (
-            supabase.table("procurements")
+            app.state.supabase.table("procurements")
             .insert({
                 "name": payload.name,
                 "description": payload.description,
@@ -86,7 +87,7 @@ def create_workspace(payload: WorkspaceCreate):
 def list_workspaces():
     try:
         result = (
-            supabase.table("procurements")
+            app.state.supabase.table("procurements")
             .select("*")
             .order("created_at", desc=True)
             .execute()
